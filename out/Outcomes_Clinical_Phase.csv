@@ -1,0 +1,15 @@
+Outcome,Phase,n,test
+Effective,Approved,104,Effective-Approved
+Effective,Phase 1,20,Effective-Phase 1
+Effective,Phase 2,8,Effective-Phase 2
+Effective,Phase 3,32,Effective-Phase 3
+Effective,Preclinical,13,Effective-Preclinical
+Effective,Unknown,83,Effective-Unknown
+Effective,Other,129,Effective-Other
+No Effect,Approved,1458,No Effect-Approved
+No Effect,Phase 1,304,No Effect-Phase 1
+No Effect,Phase 2,129,No Effect-Phase 2
+No Effect,Phase 3,474,No Effect-Phase 3
+No Effect,Preclinical,281,No Effect-Preclinical
+No Effect,Unknown,1425,No Effect-Unknown
+No Effect,Other,2261,No Effect-Other

@@ -1,0 +1,243 @@
+---
+title: "Create Sunburst"
+author: "Deisy Morselli Gysi"
+date: "3/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+require(magrittr)
+library(data.table)
+require(tidyr)
+require(htmlwidgets)
+require(sunburstR)
+DrugCat = fread('../data/BroadLibrary_DrugTargets.csv')
+
+outcomes = fread("../out/Broad_Outcome.tsv", sep = "\t")
+drug_ID = fread("../data/Complete_Mapped_All_csvs.tsv")
+ID = drug_ID$Broad_Sample %>% 
+  stringr::str_split(., "-", n = 3, simplify = T) %>%
+  as.data.frame() %>%
+  select(1:2) %>%
+  mutate(ID = paste(V1, V2, sep =  "-"))
+drug_ID$`Broad ID` = ID$ID
+drug_ID %<>% select(pert_iname, `Broad ID`) %>% unique()
+
+rm(ID)
+names(outcomes)[2]= "pert_iname"
+outcomes = inner_join(drug_ID, outcomes)
+outcomes = left_join(outcomes, DrugCat)
+
+DB_DL = fread("../data/BroadID-DrugBankID.tsv")
+
+ATCMAP = fread("../data/atc-codes.txt", sep = "\t", header = F)
+
+ID = ATCMAP$V1
+CODE = ATCMAP$V2 %>% stringr::str_split("\\|")
+
+ATCs = list()
+for(i in 1:nrow(ATCMAP)){
+  c = rev(CODE[[i]]) %>% 
+    stringr::str_to_title() %>% 
+    stringr::str_replace("\\-", " ") %>%
+    stringr::str_replace("\\-", " ")
+  
+  ATCs[[i]] = data.frame(`DrugBank ID` = ID[i], 
+                         Level1 = c[1], 
+                         Level2 = c[2], 
+                         Level3 = c[3], 
+                         Level4 = c[4])
+}
+ATCs %<>% bind_rows() %>% unique()
+
+
+names(DB_DL)= c('Broad.ID', "DrugBank.ID")
+ATC_DB_DL = full_join(DB_DL, ATCs)
+
+names(outcomes)[2] = "Broad.ID"
+ATC_DB_DL_OUT = inner_join(ATC_DB_DL, outcomes)
+
+
+Fig1 = ATC_DB_DL_OUT %>% 
+  group_by(Level1, Level2) %>%
+  summarise(n = n()) %>% 
+  filter(!is.na(Level1))
+
+
+sb <- Fig1 %>%
+  ungroup() %>% 
+  mutate(ATC = paste(Level1, Level2, sep = "-")) %>%
+  select(ATC, n) %>% 
+  sunburst(.,
+           withD3 = TRUE)
+sb
+htmltools::save_html(sb, file = "../figs/Fig1A.html")
+```
+
+
+```{r}
+compute_angle = function(perc){
+  angle = -1
+  # Or even more compact, but less readable
+  if(perc < 0.5) # 1st half [90, -90]
+    angle = (180 - (perc/0.5) * 180) - 90
+  else # 2nd half [90, -90]
+     angle = (90 - ((perc - 0.5)/0.5) * 180)
+    # angle = (180 - (perc/0.5) * 180) - 90
+  return(angle)
+}
+
+
+Fig1$Level0 = "ATC"
+Fig1l = Fig1 %>% 
+  mutate(l1 = Level1) %>% 
+  pivot_longer(cols = -c(n, l1) ) %>%
+  mutate(l1 = ifelse(value == "ATC", "ATC", l1))%>%
+  # filter(name == "Level1") %>%
+  group_by(name, value) %>%
+  mutate(N = sum(n)) %>%
+  mutate(level = as.factor(name)) %>% 
+  select(-n) %>% 
+  unique() %>% 
+  ungroup() %>% 
+  group_by(level) %>%
+  mutate(T = cumsum(N), 
+         pos = T - N/2) %>%
+  ungroup() %>% 
+  mutate(id = 1:n()) %>% group_by(id) %>% ungroup()
+
+Fig1l$angle_perc = Fig1l$pos/ max(Fig1l$T)
+
+Fig1l$angle = Fig1l$angle_perc %>% compute_angle()
+
+Fig1l
+Fig1l$size = Fig1l$level %>% 
+  factor(., labels = c(0,2,1.5)) %>% 
+  as.character() %>%
+  as.numeric()
+
+f1a = Fig1l %>%
+  ggplot() +
+  aes(x = level, y = N, fill = l1, alpha = level) + 
+  geom_col(width = 1, 
+           color = "gray90", 
+           size = 0.2, 
+           position = position_stack(reverse = TRUE)) +
+  geom_text(aes(label = value, size = size, y = pos),
+            # size = Fig1l$size,
+            # y = Fig1l$pos, 
+            angle = Fig1l$angle) +
+  # scale_size(range = c(1,2)) %>% 
+  coord_polar(theta = "y") +
+  scale_alpha_manual(values = c("Level0" = 0, "Level1" = 1, "Level2" = 0.7), guide = F) +
+  scale_x_discrete(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  # scale_fill_brewer(palette = "Dark2", na.translate = F) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+plot(f1a)
+
+pdf("../figs/Fig1A.pdf", width = 18, height = 18)
+plot(f1a)
+dev.off()
+```
+
+
+```{r}
+###################################################
+###################################################
+Fig2 = ATC_DB_DL_OUT %>% 
+  filter(Outcome2 %in% c("Strong (80%)", "Weak (50%)", "Cyto")) %>% 
+  group_by(Outcome2, Level1, Level2, Level3) %>%
+  summarise(n = n()) %>% 
+  filter(!is.na(Level1))
+
+
+sb <- Fig2 %>%
+  ungroup() %>% 
+  mutate(ATC = paste(Outcome2, Level1, Level2, Level3, sep = "-")) %>%
+  select(ATC, n) %>% 
+  sunburst(.,
+           withD3 = TRUE)
+sb
+htmltools::save_html(sb, file = "../figs/Fig2A.html")
+```
+
+
+```{r}
+Fig2 = ATC_DB_DL_OUT %>% 
+  filter(Outcome2 %in% c("Strong (80%)", "Weak (50%)", "Cyto")) %>% 
+  group_by(Outcome2, Level1, Level2) %>%
+  summarise(n = n()) %>% 
+  filter(!is.na(Level1))
+
+Fig2$Level0 = "ATC"
+Fig2l = Fig2 %>% 
+  mutate(l1 = Outcome2) %>% 
+  pivot_longer(cols = -c(n, l1) ) %>%
+  mutate(l1 = ifelse(value == "ATC", "ATC", l1))%>%
+  # filter(name == "Level1") %>%
+  group_by(l1, name, value) %>%
+  mutate(N = sum(n)) %>%
+  mutate(level = factor(name, levels = c('Level0', 'Outcome2',  'Level1', 'Level2') )) %>% 
+  select(-n) %>% 
+  unique() %>% 
+  ungroup() %>% 
+  group_by(level) %>%
+  mutate(T = cumsum(N), 
+         pos = T - N/2) %>%
+  ungroup() %>% 
+  mutate(id = 1:n()) %>% group_by(id) %>% ungroup()
+
+
+Fig2l$angle_perc = Fig2l$pos/ max(Fig2l$T)
+
+Fig2l$angle = Fig2l$angle_perc %>% compute_angle()
+
+Fig2l
+
+Fig2l$size = Fig2l$level %>% 
+  factor(., labels = c(0, 4, 2.5, 1.5)) %>% 
+  as.character() %>%
+  as.numeric()
+
+
+f2a = Fig2l %>%
+  
+  ggplot() +
+  aes(x = level, y = N, fill = l1, alpha = level) + 
+  geom_col(width = 1, 
+           color = "gray90", 
+           size = 0.2, 
+           position = position_stack(reverse = TRUE)) +
+  geom_text(aes(label = value),
+            size = Fig2l$size,
+            y = Fig2l$pos, 
+            angle = Fig2l$angle) +
+  coord_polar(theta = "y") +
+  scale_alpha_manual(values = c("Level0" = 0, "Outcome2" = 1, "Level1" = 0.8, 
+                                "Level2" = 0.7, "Level3" = 0.6),
+                     guide = F) +
+  scale_x_discrete(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_fill_brewer(palette = "Dark2", na.translate = F) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+plot(f2a)
+
+
+pdf("../figs/Fig2A_2.pdf", width = 10, height = 10)
+plot(f2a)
+dev.off()
+
+```

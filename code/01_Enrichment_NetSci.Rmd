@@ -1,0 +1,323 @@
+---
+title: "Target Enrichment"
+author: "Deisy Morselli Gysi"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, echo=FALSE, warning=FALSE, message=F}
+require(data.table)
+require(tidyr)
+require(magrittr)
+require(dplyr)
+require(NetSci)
+require(igraph)
+`%ni%` <- Negate(`%in%`)
+```
+
+
+```{r}
+Virus = readxl::read_xlsx("../data/SARS-COV2.xlsx", skip = 1)
+outcomes = fread("../out/Broad_Outcome.tsv") %>% 
+  select(drug, starts_with("Outcome")) 
+outcomes$Outcome = outcomes$Outcome2
+
+outcomes$Outcome3 = ifelse(outcomes$Outcome %in% c("Strong (80%)", "Weak (50%)"), 'Strong & Weak',outcomes$Outcome )
+
+outcomes %>% 
+  group_by(Outcome3) %>%
+  summarise(n = n()) %>% 
+  mutate(`%` = n / sum(n)* 100)
+
+
+
+PPI = data.table::fread("../data/PPI_Symbol_Entrez.csv", stringsAsFactors = F)
+PPI = subset(PPI, PPI$Symbol_A != PPI$Symbol_B)
+Genes_PPI = c(PPI$Symbol_A, PPI$Symbol_B) %>% unique()
+targets = fread("../data/BroadLibrary_DrugTargets.csv") %>% 
+  select(id, pert_iname, target)
+targets2 = targets$target %>% 
+  stringr::str_split(., "\\|", simplify = TRUE) %>% 
+  as.data.frame()
+targets = cbind(targets, targets2) %>% 
+  as.data.frame()
+target = targets[, -3]
+target %<>% 
+  pivot_longer(cols = -c(1,2), values_to = "Gene") %>% 
+  select(., -`name`) %>% filter(Gene != "")
+
+outcomes %>% 
+  mutate(Has_Target = ifelse(drug %in% target$pert_iname, "Yes", "No")) %>% group_by(Outcome2, Has_Target) %>% 
+  summarise(n = n()) %>% ungroup() %>% 
+  pivot_wider(names_from = Has_Target, values_from = n) %>%
+  mutate(Total = No + Yes) %>%
+  select(-No) %>%
+  mutate( `Yes %` = round(Yes/ sum(Yes) * 100, 2), 
+          `Total %` = round( Total/ sum(Total) * 100, 2))
+  
+```
+
+
+```{r}
+gPPI = graph_from_data_frame(PPI[, c(3:4)], directed = F)
+target %<>% filter(Gene %in% V(gPPI)$name)
+```
+
+
+```{r}
+###
+
+Toxic = outcomes$drug[outcomes$Outcome3 == "Cyto"]
+StrongW = outcomes$drug[outcomes$Outcome3 == "Strong & Weak"]
+
+VWeak = outcomes$drug[outcomes$Outcome3 == "Very Weak (35%)"]
+low = outcomes$drug[outcomes$Outcome3 == "Low (25%)"]
+nohit = outcomes$drug[outcomes$Outcome3 %in% c("No-Effect")]
+
+
+
+Toxic = target$Gene[target$pert_iname %in% Toxic]
+Strong_W = target$Gene[target$pert_iname %in% StrongW]
+VWeak = target$Gene[target$pert_iname %in% VWeak]
+Low = target$Gene[target$pert_iname %in% low]
+nohit = target$Gene[target$pert_iname %in% nohit]
+
+
+LCC_StrongW = LCC_Significance(N = 1000, 
+                               Targets =  Strong_W, 
+                               G = gPPI)
+
+
+
+histLCC = function(LCC_L, Name){
+  LCC_L[[1]]%>% hist(., las = 1, 
+                     main = "",
+                     # ylim = c(0,350),
+                     col = 'gray75', ylab = "")
+  abline(v = LCC_L$LCC, col = "red")
+  title(main = Name, sub = paste0("LCC: ",
+                                  round(LCC_L$LCC,0),
+                                  " (", 
+                                  round(LCC_L$mean,2),
+                                  " ± ", 
+                                  round(LCC_L$sd,2),"; ",
+                                  "Z: " ,round(LCC_L$Z,2),
+                                  ")"))
+  
+  
+}
+```
+
+
+```{r}
+pdf("../figs/LCCsSW.pdf", 
+    width = 10, height = 10)
+# par(mfrow =c(2,3))
+histLCC(LCC_L = LCC_StrongW, "Strong & Weak")
+dev.off()
+```
+
+```{r}
+require(biomaRt)
+
+ensembl = useMart("ensembl",dataset="hsapiens_gene_ensembl" )
+attributes = listAttributes(ensembl)
+GENES = getBM(attributes=c('ensembl_gene_id',
+                           'hgnc_symbol'),
+              filters = "hgnc_symbol",
+              values = unique(target$Gene),
+              mart = ensembl)
+names(GENES)[2] = "Gene"
+
+myDB = dplyr::left_join(target, GENES)
+
+
+Gene_List = list(`Toxic` = unique(Toxic),
+                 `Strong Weak` = unique(Strong_W),
+                 `Very Weak` = unique(VWeak),
+                 `Low` = unique(Low),
+                 `SARS-CoV2` = unique(Virus$PreyGene), 
+                 `Drug Targets` = unique(myDB$Gene))
+
+EULER = eulerr::euler(Gene_List) 
+plot(EULER)
+
+Gene_List = list(`Toxic` = unique(Toxic),
+                 `Strong Weak` = unique(Strong_W),
+                 `SARS-CoV2` = unique(Virus$PreyGene), 
+                 `Drug Targets` = unique(myDB$Gene))
+
+EULER = eulerr::euler(Gene_List) 
+plot(EULER)
+
+Gene_List = list(`No-Effect` = unique(nohit), 
+                 `Toxic` = unique(Toxic),
+                 `Strong Weak` = unique(Strong_W),
+                 # `Weak` = unique(Weak),
+                 `Very Weak` = unique(VWeak),
+                 `Low` = unique(Low)
+)
+
+EULER = eulerr::euler(Gene_List) 
+plot(EULER, quantities = TRUE)
+
+unique(Strong_W) %>% 
+  write.table('../out/StrongWeak.csv', quote = F, row.names = F, col.names = F)
+```
+
+## Target enrichment
+```{r}
+names(target) = c("Broad_ID", "Broad_name", "Gene")
+outcomes_Broad = outcomes %>% dplyr::select(drug, Outcome3)
+names(outcomes_Broad) = c("Broad_name", "Broad_Outcome")
+
+x = dplyr::inner_join(target, outcomes_Broad)
+
+
+Table = x %>% 
+  group_by(Gene, Broad_Outcome) %>% 
+  filter(!is.na(Broad_Outcome)) %>% 
+  summarise(., freq = n()) %>% 
+  pivot_wider(., names_from = "Broad_Outcome", values_from = freq)
+
+Table[is.na(Table)] <- 0
+
+
+
+enrich.fisher = function(suc, fail, tot_suc, tot_fail){
+  m = matrix(c(suc, fail, tot_suc, tot_fail), byrow = TRUE, ncol = 2)
+  p = fisher.test(m, alternative = "greater")$p
+  
+  return(p)
+}
+
+k = 0
+Out = list()
+for ( i in 1:(ncol(Table)-1)){
+  for ( j in 1:nrow(Table)){
+    k = k + 1
+    suc = Table[j,i + 1] %>% as.numeric()
+    fail = sum(Table[j, -c(1,i + 1)], na.rm = T)
+    
+    tot_suc = sum(Table[,i + 1])
+    tot_fail = sum(Table[,-c(1, i + 1)])
+    
+    p =  enrich.fisher(suc = suc, fail = fail, tot_suc = tot_suc , tot_fail = tot_fail)
+    
+    Pipe = names(Table)[i+1]
+    Gene = Table[j, 1]
+    
+    Out[[k]] = data.frame(Pipe = Pipe, Gene = Gene, p = p)
+  }
+}
+
+Out %<>% bind_rows()
+```
+
+
+```{r}
+Out_w = Out %>% 
+  pivot_wider(names_from = Pipe, values_from = p)
+
+Out_w$padj_noeffect = Out_w$`No-Effect` %>% p.adjust(., method = "fdr")
+
+Out_w$padj_Cyto = Out_w$Cyto %>% p.adjust(., method = "fdr")
+Out_w$padj_StrWeak = Out_w$`Strong & Weak` %>% p.adjust(., method = "fdr")
+Out_w$padj_vWeak = Out_w$`Very Weak (35%)` %>% p.adjust(., method = "fdr")
+Out_w$padj_low = Out_w$`Low (25%)` %>% p.adjust(., method = "fdr")
+names(Out_w)[2:6] = paste("p", names(Out_w)[2:6], sep = "_")
+
+Complete = dplyr::full_join(Table, Out_w)
+
+Out_w = Out %>% pivot_wider(names_from = Pipe, values_from = p)
+
+Out_w$padj_noeffect = Out_w$`No-Effect` %>% p.adjust(., method = "fdr")
+
+Out_w$padj_Cyto = Out_w$Cyto %>% p.adjust(., method = "fdr")
+Out_w$padj_StrWeak = Out_w$`Strong & Weak` %>% p.adjust(., method = "fdr")
+Out_w$padj_vWeak = Out_w$`Very Weak (35%)` %>% p.adjust(., method = "fdr")
+Out_w$padj_low = Out_w$`Low (25%)` %>% p.adjust(., method = "fdr")
+
+
+fwrite(Out_w, "../out/Target_enrichment_SW.tsv", sep = "\t", na = NA, quote = F, row.names = FALSE)
+fwrite(Complete, "../out/Target_enrichment_SW_Complete.tsv", sep = "\t", na = NA, quote = F, row.names = FALSE)
+
+
+Out_w %>%
+  filter(`Strong & Weak` < 0.05) %>% 
+  pull(Gene) %>% length()
+
+Out_w %>% filter(`Strong & Weak` < 0.05) %>% pull(Gene) %>% paste0(collapse = ", ")
+
+Out_w %>% filter(`Strong & Weak` < 0.05) %>% 
+  dplyr::select(Gene) %>% 
+  write.table(., file = "../out/EnrichR_Strong_Weak.txt", 
+              quote = F, row.names = F, col.names = F)
+```
+
+```{r}
+names(outcomes)[1]= 'Broad_name'
+
+drug_target = dplyr::inner_join(outcomes, target)
+
+drug_target %<>% dplyr::select(Broad_name, Gene, Broad_ID, Outcome3)
+
+v = data.frame ( ID = c(as.character(drug_target$Broad_name),
+                        as.character(drug_target$Gene))) %>% 
+  unique()
+
+enriched_sw = Out_w %>% filter(`Strong & Weak` < 0.05) %>% pull(Gene) 
+strong_drugs = drug_target$Broad_name[drug_target$Outcome3 == "Strong & Weak"]
+v$type = ifelse(v$ID %in% drug_target$Gene, 1, 0)
+v$strongG = ifelse(v$ID %in% enriched_sw, 1, 0)
+v$strongD = ifelse(v$ID %in% strong_drugs, 1, 0)
+
+v$color = ifelse(v$ID %in% enriched_sw, '#B7094C', '#F98AB5')
+v$color = ifelse(v$ID %in% strong_drugs, '#0091AD', v$color)
+
+```
+
+```{r}
+source("99_Shapes.R")
+g = drug_target %>% 
+  dplyr::filter(Outcome3 %in% "Strong & Weak") %>%
+  graph_from_data_frame(., vertices = v, directed = F)
+g %<>% delete.vertices(degree(.)==0)
+
+comps = components(g)
+
+comps$csize #get 3 and 12
+sum(names(comps$membership[comps$membership == 3]) %in% strong_drugs)
+sum(names(comps$membership[comps$membership == 3]) %ni% strong_drugs)
+
+sum(names(comps$membership[comps$membership == 12]) %in% strong_drugs)
+sum(names(comps$membership[comps$membership == 12]) %ni% strong_drugs)
+
+V(g)$label = NA
+V(g)$size = degree(g) %>% CoDiNA::normalize() + 0.2
+V(g)$size  = V(g)$size * 5
+# V(g)$shape = ifelse(V(g)$name %in% enriched_sw, "star", "circle")
+V(g)$size = ifelse(V(g)$name %in% c(enriched_sw),
+                   V(g)$size * 2, V(g)$size)
+
+V(g)$frame.color = V(g)$color
+E(g)$color = '#5C4D7D'
+E(g)$curved = 0.1
+
+V(g)$label = ifelse(V(g)$size> 1.3 & V(g)$name %in% c(enriched_sw), V(g)$name, NA)
+V(g)$label.color =  "#7e0734" #V(g)$color
+V(g)$label.cex = V(g)$size/3
+
+E(g)$weight = edge.betweenness(g) %>% CoDiNA::normalize() + 0.1
+coord = layout_with_fr(g, weights = E(g)$weight^1/2, start.temp = 100)
+plot(g, layout = coord)
+
+
+pdf("../figs/Network_Named.pdf", width = 10, height = 10)
+plot(g, layout = coord)
+legend("bottom", legend = c("Strong & Weak Drug", "Enriched Target", "Non- Enriched"), fill =c('#0091AD','#B7094C', '#F98AB5'), bty = 'n', ncol = 3)
+dev.off()
+```
+
