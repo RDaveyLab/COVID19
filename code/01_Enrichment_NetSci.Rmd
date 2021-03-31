@@ -61,6 +61,33 @@ outcomes %>%
 
 
 ```{r}
+target_outcome = inner_join(outcomes, target,  by = c("drug" = "pert_iname"))
+Outcomes_SARS_Targets = target_outcome %>% 
+  filter(Gene %in% Genes_PPI) %>% 
+  mutate(SARS_Target = ifelse(Gene %in% Virus$PreyGene, 1, 0)) %>%
+  mutate(Outcome_simplified = ifelse(Outcome2 %in% c("Low (25%)", "Very Weak (35%)"), "No-Effect", Outcome2)) %>%
+  group_by(SARS_Target, Outcome_simplified, drug) %>%
+  summarise(SARS_Target_Drug = max(SARS_Target)) %>%
+  ungroup() %>%
+  group_by(SARS_Target_Drug, Outcome_simplified) %>%
+  summarise(n = n()) %>% 
+  pivot_wider(names_from = SARS_Target_Drug, values_from = n)
+```
+
+
+```{r}
+Outcomes_SARS_Targets$p = NA
+
+for (i in 1:nrow(Outcomes_SARS_Targets)) {
+ x = prop.test(Outcomes_SARS_Targets$`0`[i]/sum(Outcomes_SARS_Targets$`0`), Outcomes_SARS_Targets$`0`[i]/sum(Outcomes_SARS_Targets$`1`), alternative = "greater")
+  Outcomes_SARS_Targets$p[i] = x$p.value
+}
+
+Outcomes_SARS_Targets
+```
+
+
+```{r}
 gPPI = graph_from_data_frame(PPI[, c(3:4)], directed = F)
 target %<>% filter(Gene %in% V(gPPI)$name)
 ```
