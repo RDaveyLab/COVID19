@@ -1,6 +1,6 @@
 # High Content Screening of a 6,700 Drug Repurposing Library Reveals Novel Classes of Potent SARS-CoV-2 Infection Inhibitors In Vitro and In Vivo
 
-- Cell Profiler pipelines are in folder './CP_pipelines'
+- Cell Profiler pipelines are in folder `./CP_pipelines`
 - Codes for the manuscript can be found in the folder: `./code`
 - Raw data necessary for reproducing the codes: `./data`
 - Outcomes can be found in `./out`
