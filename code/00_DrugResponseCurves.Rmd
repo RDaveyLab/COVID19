@@ -525,7 +525,9 @@ outcomes$Outcome2 = ifelse(outcomes$Outcome2 %in% "Manual Inspection", "No-Effec
 ###
 ### Manual Check on the outcomes
 
-Manual_Inspection = readxl::read_excel('../data/Broad Drugs Reclassification.xlsx')
+Manual_Inspection = readxl::read_excel('../data/Broad Drugs Reclassification.xlsx') 
+
+Manual_Inspection %<>% filter(Category != "NA")
 
 outcomes$Outcome2[tolower(outcomes$drug) %in% tolower(Manual_Inspection$Drug)]<- "No-Effect"
 outcomes %>% 

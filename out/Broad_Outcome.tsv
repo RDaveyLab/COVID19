@@ -354,7 +354,7 @@ No-Effect	o-mercapto-benzoic-acid	No-Effect
 No-Effect	N-hydroxynicotinamide	No-Effect
 No-Effect	VX-11e	No-Effect
 No-Effect	macelignan	No-Effect
-Strong (80%)	BIX-01294	No-Effect
+Strong (80%)	BIX-01294	Strong (80%)
 No-Effect	adenine	No-Effect
 No-Effect	AI-10-49	No-Effect
 No-Effect	L-701252	No-Effect
@@ -484,7 +484,7 @@ No-Effect	ML167	No-Effect
 No-Effect	PETCM	No-Effect
 No-Effect	CaCCinh-A01	No-Effect
 No-Effect	CYM-50769	No-Effect
-Strong (80%)	DDR1-IN-1	No-Effect
+Strong (80%)	DDR1-IN-1	Strong (80%)
 No-Effect	TCID	No-Effect
 Manual Inspection	BMS-309403	No-Effect
 Manual Inspection	TFC-007	No-Effect
@@ -2617,7 +2617,7 @@ No-Effect	remimazolam	No-Effect
 No-Effect	3-amino-benzamide	No-Effect
 Weak (50%)	PD-153035	Weak (50%)
 No-Effect	BMS-599626	No-Effect
-Manual Inspection	obatoclax	No-Effect
+Manual Inspection	obatoclax	Strong (80%)
 No-Effect	imexon	No-Effect
 No-Effect	dehydrocorydaline	No-Effect
 No-Effect	R112	No-Effect
@@ -3652,7 +3652,7 @@ No-Effect	tetrahydrouridine	No-Effect
 No-Effect	butaclamol	No-Effect
 Weak (50%)	I-BET-762	Weak (50%)
 No-Effect	lonafarnib	No-Effect
-Strong (80%)	bardoxolone-methyl	No-Effect
+Strong (80%)	bardoxolone-methyl	Strong (80%)
 Cyto	BI-2536	Cyto
 Cyto	volasertib	Cyto
 No-Effect	KBG	No-Effect
