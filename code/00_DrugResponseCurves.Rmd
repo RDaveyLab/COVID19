@@ -21,6 +21,17 @@ require(tidyr)
 ```{r}
 Dose_Response = fread("../data/Complete_Mapped_All_csvs.tsv")
 
+ID_MAP = Dose_Response %>% 
+  filter(pert_iname != "") %>%
+  select(pert_iname, Broad_Sample) %>%
+  unique()
+
+tmp = ID_MAP$Broad_Sample %>% 
+  stringr::str_split("-", simplify = TRUE)
+ID_MAP$Broad_Sample = paste(tmp[,1], tmp[,2], sep = "-")
+ID_MAP %<>% unique()
+
+
 Dose_Response$pert_iname  = ifelse(Dose_Response$pert_iname == "", "Control", Dose_Response$pert_iname)
 
 Dose_Response$Ratio_Infection = Dose_Response$Count_Infected/Dose_Response$Count_Nuclei
@@ -54,8 +65,11 @@ Dose_Response$Ratio_Nuclei = Dose_Response$Count_Nuclei / Dose_Response$CTRavr_n
 Dose_Response$Ratio_Infection_Normalized = Dose_Response$Ratio_Infection / Dose_Response$CTRavr_ratio
 
 
-Dose_Response %<>% dplyr::select(pert_iname, Count_Infected, Count_Nuclei,
-                                 Ratio_Infection_Normalized, Ratio_Nuclei,
+Dose_Response %<>% dplyr::select(pert_iname, 
+                                 Count_Infected, 
+                                 Count_Nuclei,
+                                 Ratio_Infection_Normalized,
+                                 Ratio_Nuclei,
                                  mmoles_per_liter)
 
 
@@ -637,4 +651,31 @@ ACC %>%
 ACC
 ```
 
+## Save the file with outcomes, targets and IDs
+
+```{r}
+Dose_Response = fread("../data/Complete_Mapped_All_csvs.tsv")
+
+ID_MAP = Dose_Response %>% 
+  filter(pert_iname != "") %>%
+  dplyr::select(pert_iname, Broad_Sample) %>%
+  unique()
+
+tmp = ID_MAP$Broad_Sample %>% 
+  stringr::str_split("-", simplify = TRUE)
+ID_MAP$Broad_Sample = paste(tmp[,1], tmp[,2], sep = "-")
+ID_MAP %<>% unique()
+
+Targets = fread("../data/BroadLibrary_DrugTargets.csv")
+names(Targets)[2] = "Broad_Sample"
+
+Outcomes = fread('../out/Broad_Outcome.tsv') %>%
+  dplyr::select(-Outcome) %>%
+  rename(pert_iname = drug) %>%
+  rename(Outcome = Outcome2)
+Combined = dplyr::right_join(Targets, ID_MAP) %>%
+  right_join(., Outcomes) 
+Combined %>%
+  fwrite("../out/Outcome_ID_SMILES_TARGET.csv")
+```
 
